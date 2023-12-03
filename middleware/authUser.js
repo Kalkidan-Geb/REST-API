@@ -1,25 +1,21 @@
 const auth = require('basic-auth');
-const bcrypt = require('bcrypt');
+const bcryptjs = require('bcryptjs');
 const { User } = require('../models');
 
-const authUser = async (req, res, next) => {
+const authenticateUser = async (req, res, next) => {
   let message;
   const credentials = auth(req);
 
-  // if credentials exist
   if (credentials) {
-    // Get user from database
     const user = await User.findOne({
       where: {
         emailAddress: credentials.name,
       },
     });
 
-    // If user exists in the database
     if (user) {
-      const validPassword = bcrypt.compareSync(credentials.pass, user.password);
+      const validPassword = bcryptjs.compareSync(credentials.pass, user.password);
 
-      // If entered password matches saved password
       if (validPassword) {
         req.currentUser = user;
       } else {
@@ -36,7 +32,8 @@ const authUser = async (req, res, next) => {
     res.status(401).json({ message: 'Access Denied' });
     return;
   }
+
   next();
 };
 
-module.exports = authUser;
+module.exports = { authenticateUser };
