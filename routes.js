@@ -35,6 +35,7 @@ function asyncHandler(cb) {
 // GET /api/users
 router.get('/users', asyncHandler(async (req, res) => {
   const user = req.currentUser;
+  // Filter out unnecessary properties
   res.json({
     id: user.id,
     firstName: user.firstName,
@@ -46,11 +47,17 @@ router.get('/users', asyncHandler(async (req, res) => {
 // POST /api/users
 router.post('/users', [validateInput(['firstName', 'lastName', 'emailAddress', 'password'])], asyncHandler(async (req, res) => {
   try {
+    // Create user
     const user = await User.create(req.body);
     res.location('/').status(201).end();
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
       res.status(400).json({ message: 'Email address must be unique' });
+    } else if (error.name === 'SequelizeValidationError') {
+        
+      // Handle validation errors with a 400 status code
+      const errors = error.errors.map(err => err.message);
+      res.status(400).json({ errors });
     } else {
       throw error;
     }
@@ -66,6 +73,7 @@ router.get('/courses', asyncHandler(async (req, res) => {
         attributes: ['id', 'firstName', 'lastName', 'emailAddress'],
       },
     ],
+    attributes: { exclude: ['createdAt', 'updatedAt'] },
   });
   res.json(courses);
 }));
@@ -77,6 +85,7 @@ router.get('/courses/:id', asyncHandler(async (req, res, next) => {
       model: User,
       attributes: ['firstName', 'lastName', 'emailAddress'],
     },
+    attributes: { exclude: ['createdAt', 'updatedAt'] },
   });
   if (course) {
     res.json(course).status(200);
@@ -88,13 +97,13 @@ router.get('/courses/:id', asyncHandler(async (req, res, next) => {
 }));
 
 // POST /api/courses
-router.post('/courses', asyncHandler(async (req, res) => {
+router.post('/courses', asyncHandler(async (req, res, next) => {
   try {
     const course = await Course.create(req.body);
     if (!course.title || !course.description) {
       const error = new Error('Title and description are required');
       error.status = 400;
-      throw error;
+      next(error);
     }
     res.status(201).location(`/courses/${course.id}`).end();
   } catch (error) {
