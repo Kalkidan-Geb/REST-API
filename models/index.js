@@ -14,7 +14,7 @@ module.exports = {
   sequelize,
 };
 
-middleware/auth-user.js:
+middleware/auth-user.js
 // middleware/auth-user.js
 const { User } = require('../models');
 
