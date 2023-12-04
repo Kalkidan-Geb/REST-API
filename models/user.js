@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const bcrypt = require('bcrypt');
+const bcryptjs = require('bcryptjs');
 
 module.exports = (sequelize) => {
   const User = sequelize.define('User', {
@@ -25,7 +25,7 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false,
       set(value) {
-        const hashedPassword = bcrypt.hashSync(value, 10);
+        const hashedPassword = bcryptjs.hashSync(value, 10);
         this.setDataValue('password', hashedPassword);
       },
     },
@@ -39,4 +39,3 @@ module.exports = (sequelize) => {
 
   return User;
 };
-
