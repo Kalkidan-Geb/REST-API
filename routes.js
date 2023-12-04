@@ -1,11 +1,12 @@
+'use strict';
+
 const express = require('express');
-const { authenticateUser } = require('./middleware/auth-user');
-const { validationResult } = require('express-validator');
-const bcrypt = require('bcryptjs');
-const { User, Course } = require('./models');
 const router = express.Router();
-// Middleware to authenticate user for protected routes
-router.use(authenticateUser);
+const bcryptjs = require('bcryptjs');
+const { validationResult } = require('express-validator');
+const { User, Course } = require('./models');
+const { authenticateUser } = require('./middleware/authUser');
+
 // Reusable validation function
 const validateInput = (fields) => {
   return async (req, res, next) => {
@@ -16,8 +17,23 @@ const validateInput = (fields) => {
     next();
   };
 };
+
+// Apply authentication middleware to all routes that require user authentication
+router.use(authenticateUser);
+
+// Helper function (to handle asynchronous routes)
+function asyncHandler(cb) {
+  return async (req, res, next) => {
+    try {
+      await cb(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
 // GET /api/users
-router.get('/users', (req, res) => {
+router.get('/users', asyncHandler(async (req, res) => {
   const user = req.currentUser;
   res.json({
     id: user.id,
@@ -25,15 +41,12 @@ router.get('/users', (req, res) => {
     lastName: user.lastName,
     emailAddress: user.emailAddress,
   });
-});
+}));
+
 // POST /api/users
-router.post('/users', [
-  validateInput(['firstName', 'lastName', 'emailAddress', 'password']),
-], async (req, res) => {
+router.post('/users', [validateInput(['firstName', 'lastName', 'emailAddress', 'password'])], asyncHandler(async (req, res) => {
   try {
-    // Create user
     const user = await User.create(req.body);
-    // Set Location header to "/"
     res.location('/').status(201).end();
   } catch (error) {
     if (error.name === 'SequelizeUniqueConstraintError') {
@@ -42,62 +55,80 @@ router.post('/users', [
       throw error;
     }
   }
-});
+}));
+
 // GET /api/courses
-router.get('/courses', async (req, res) => {
+router.get('/courses', asyncHandler(async (req, res) => {
   const courses = await Course.findAll({
-    include: [{
-      model: User,
-      attributes: ['id', 'firstName', 'lastName', 'emailAddress'],
-    }],
+    include: [
+      {
+        model: User,
+        attributes: ['id', 'firstName', 'lastName', 'emailAddress'],
+      },
+    ],
   });
   res.json(courses);
-});
+}));
+
 // GET /api/courses/:id
-router.get('/courses/:id', async (req, res) => {
+router.get('/courses/:id', asyncHandler(async (req, res, next) => {
   const course = await Course.findByPk(req.params.id, {
-    include: [{
+    include: {
       model: User,
-      attributes: ['id', 'firstName', 'lastName', 'emailAddress'],
-    }],
+      attributes: ['firstName', 'lastName', 'emailAddress'],
+    },
   });
   if (course) {
-    res.json(course);
+    res.json(course).status(200);
   } else {
-    res.status(404).json({ message: 'Course not found' });
+    const error = new Error('The course was not found');
+    error.status = 404;
+    next(error);
   }
-});
+}));
+
 // POST /api/courses
-router.post('/courses', [
-  validateInput(['title', 'description']),
-], async (req, res) => {
-  // Create course
-  const course = await Course.create(req.body);
-  // Set Location header to the URI for the newly created course
-  res.location(`/api/courses/${course.id}`).status(201).end();
-});
+router.post('/courses', asyncHandler(async (req, res) => {
+  try {
+    const course = await Course.create(req.body);
+    if (!course.title || !course.description) {
+      const error = new Error('Title and description are required');
+      error.status = 400;
+      throw error;
+    }
+    res.status(201).location(`/courses/${course.id}`).end();
+  } catch (error) {
+    if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+      const errors = error.errors.map(err => err.message);
+      res.status(400).json({ errors });
+    } else {
+      throw error;
+    }
+  }
+}));
+
 // PUT /api/courses/:id
-router.put('/courses/:id', [
-  validateInput(['title', 'description']),
-], async (req, res) => {
+router.put('/courses/:id', [validateInput(['title', 'description'])], asyncHandler(async (req, res) => {
   const course = await Course.findByPk(req.params.id);
+
   if (course && course.userId === req.currentUser.id) {
-    // Update course
     await course.update(req.body);
     res.status(204).end();
   } else {
     res.status(403).json({ message: 'Access denied. User does not own the course.' });
   }
-});
+}));
+
 // DELETE /api/courses/:id
-router.delete('/courses/:id', async (req, res) => {
+router.delete('/courses/:id', asyncHandler(async (req, res) => {
   const course = await Course.findByPk(req.params.id);
+
   if (course && course.userId === req.currentUser.id) {
-    // Delete course
     await course.destroy();
     res.status(204).end();
   } else {
     res.status(403).json({ message: 'Access denied. User does not own the course.' });
   }
-});
+}));
+
 module.exports = router;
